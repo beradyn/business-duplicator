@@ -61,6 +61,7 @@ const colors = {
     lavender: '#EEE7FC',
     violet: '#8970CB',
     inkSoft: '#5A514A',
+    overlay: 'rgba(39, 35, 32, 0.56)',
   },
 
   // Border radius (in px). Sync from the sibling web artifact's --radius

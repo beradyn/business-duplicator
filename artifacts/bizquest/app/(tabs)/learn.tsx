@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { MotionPressable, Reveal } from '@/components/Motion';
 import { AppButton, BrandHeader, Page, PageHeading, Panel, RoundIcon } from '@/components/GameUI';
 import { BADGES, QUESTS } from '@/constants/game-content';
 import { useColors } from '@/hooks/useColors';
@@ -19,7 +20,7 @@ export default function LearnScreen() {
   const activeQuest =
     QUESTS.find((quest) => quest.id === sessionQuestId) ??
     QUESTS.find((quest) => !state.completedQuests.includes(quest.id));
-  const doneCount = state.completedQuests.length;
+  const doneCount = QUESTS.filter((quest) => state.completedQuests.includes(quest.id)).length;
   const earnedBadges = BADGES.filter((badge) => state.badges.includes(badge.id));
 
   const answer = (index: number) => {
@@ -47,7 +48,7 @@ export default function LearnScreen() {
       <PageHeading
         eyebrow="THE LEARNING TRAIL"
         title="Brain power, unlocked."
-        description="Short quests turn real-world money choices into skills you can use."
+        description="Build your money skills, one real-world challenge at a time."
       />
 
       <Panel tone="lavender" style={styles.progressCard}>
@@ -77,17 +78,17 @@ export default function LearnScreen() {
               ]}
             >
               {state.completedQuests.includes(quest.id) ? (
-                <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                <Ionicons name="checkmark" size={13} color={colors.primaryForeground} />
               ) : (
                 <Text style={[styles.dotNumber, { color: colors.mutedForeground }]}>{index + 1}</Text>
               )}
             </View>
           ))}
-          <View style={[styles.questLine, { backgroundColor: colors.card }]} />
         </View>
       </Panel>
 
       {activeQuest ? (
+        <Reveal key={activeQuest.id}>
         <Panel tone="plain" style={styles.challengeCard}>
           <View style={styles.challengeHeading}>
             <View style={[styles.questNumber, { backgroundColor: colors.orangeSoft }]}>
@@ -115,7 +116,7 @@ export default function LearnScreen() {
                   ? colors.orangeSoft
                   : colors.card;
               return (
-                <Pressable
+                <MotionPressable
                   key={option}
                   accessibilityRole="button"
                   accessibilityState={{ selected: isSelected, disabled: selectedOption !== null }}
@@ -135,12 +136,12 @@ export default function LearnScreen() {
                   <Text style={[styles.answerText, { color: colors.foreground }]}>{option}</Text>
                   {revealedCorrect ? <Ionicons name="checkmark-circle" size={21} color={colors.mint} /> : null}
                   {revealedWrong ? <Ionicons name="close-circle" size={21} color={colors.primary} /> : null}
-                </Pressable>
+                </MotionPressable>
               );
             })}
           </View>
           {selectedOption !== null ? (
-            <View
+            <Reveal
               style={[
                 styles.feedbackBox,
                 { backgroundColor: answerCorrect ? colors.mintSoft : colors.goldSoft },
@@ -171,11 +172,12 @@ export default function LearnScreen() {
                 icon="arrow-forward"
                 compact
                 testID="next-quest"
-                onPress={moveOn}
+                onPress={doneCount === QUESTS.length ? () => router.navigate('/avatar') : moveOn}
               />
-            </View>
+            </Reveal>
           ) : null}
         </Panel>
+        </Reveal>
       ) : (
         <Panel tone="gold" style={styles.completeCard}>
           <RoundIcon name="trophy-outline" color={colors.accentForeground} background={colors.card} size={54} />
@@ -224,7 +226,7 @@ const styles = StyleSheet.create({
   progressTitle: { fontSize: 16, fontWeight: '900' },
   progressDescription: { fontSize: 11, lineHeight: 15 },
   progressCount: { fontSize: 16, fontWeight: '900' },
-  questDots: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  questDots: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   questDot: { width: 27, height: 27, borderRadius: 14, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
   dotNumber: { fontSize: 10, fontWeight: '900' },
   questLine: { position: 'absolute', left: 18, right: 18, height: 2 },

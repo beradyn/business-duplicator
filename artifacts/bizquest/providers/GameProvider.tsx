@@ -18,6 +18,8 @@ import {
   VENTURES,
 } from '@/constants/game-content';
 import { useAuth } from '@/providers/AuthProvider';
+import { FIRST_EVENT_AT, applyBusinessDecision, scheduleSalesEvent } from '@/constants/business-rules';
+import { QUESTS } from '@/constants/game-content';
 
 const STORAGE_KEY = 'bizquest-progress-v2:';
 const STARTING_GRANT = 120;
@@ -55,6 +57,10 @@ export interface GameState {
   weekSales: number;
   weeksCompleted: number;
   eventCycle: number;
+  pendingEventId: string | null;
+  nextEventAt: number;
+  lastEventId: string | null;
+  lastEventMessage: string;
 }
 
 const DEFAULT_STATE: GameState = {
@@ -81,6 +87,10 @@ const DEFAULT_STATE: GameState = {
   weekSales: 0,
   weeksCompleted: 0,
   eventCycle: 0,
+  pendingEventId: null,
+  nextEventAt: FIRST_EVENT_AT,
+  lastEventId: null,
+  lastEventMessage: '',
 };
 
 interface GameContextValue {
@@ -115,6 +125,8 @@ function restoredState(raw: string): GameState | null {
     return {
       ...DEFAULT_STATE,
       ...parsed,
+      pendingEventId: typeof parsed.pendingEventId === 'string' ? parsed.pendingEventId : null,
+      nextEventAt: typeof parsed.nextEventAt === 'number' ? parsed.nextEventAt : (parsed.sold ?? 0) + FIRST_EVENT_AT,
       avatar: { ...DEFAULT_STATE.avatar, ...(parsed.avatar ?? {}) },
       badges: Array.isArray(parsed.badges) ? parsed.badges : [],
       completedQuests: Array.isArray(parsed.completedQuests) ? parsed.completedQuests : [],
@@ -209,11 +221,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const restock = useCallback(() => {
     const venture = VENTURES.find((item) => item.id === state.ventureId);
-    if (!venture || state.cash < venture.unitCost * RESTOCK_UNITS) return false;
+    if (state.pendingEventId || !venture || state.cash < venture.unitCost * RESTOCK_UNITS) return false;
     const cost = venture.unitCost * RESTOCK_UNITS;
     setState((current) => {
       const currentVenture = VENTURES.find((item) => item.id === current.ventureId);
-      if (!currentVenture || current.cash < cost) return current;
+      if (current.pendingEventId || !currentVenture || current.cash < cost) return current;
       return {
         ...current,
         cash: current.cash - cost,
@@ -222,14 +234,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
       };
     });
     return true;
-  }, [state.cash, state.ventureId]);
+  }, [state.cash, state.ventureId, state.pendingEventId]);
 
   const sellProduct = useCallback(() => {
     const currentVenture = VENTURES.find((item) => item.id === state.ventureId);
-    if (!currentVenture || state.inventory <= 0 || state.salePrice > currentVenture.salePrice + 2) return false;
+    if (state.pendingEventId || !currentVenture || state.inventory <= 0 || state.salePrice > currentVenture.salePrice + 2) return false;
     setState((current) => {
       const venture = VENTURES.find((item) => item.id === current.ventureId);
-      if (!venture || current.inventory <= 0) return current;
+      if (current.pendingEventId || !venture || current.inventory <= 0) return current;
       if (current.salePrice > venture.salePrice + 2) return current;
       const weekSales = current.weekSales + 1;
       const finishedWeek = weekSales >= 5;
@@ -242,7 +254,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
           ? [...badges, 'first-sale']
           : badges;
       const helperBonus = current.helperHired ? 2 : 0;
-      return {
+      return scheduleSalesEvent({
         ...current,
         inventory: current.inventory - 1,
         sold: current.sold + 1,
@@ -256,24 +268,24 @@ export function GameProvider({ children }: { children: ReactNode }) {
           makeEntry(`Sold 1 ${venture.product.toLowerCase()}`, current.salePrice + helperBonus),
           ...current.ledger,
         ].slice(0, 8),
-      };
+      });
     });
     return true;
-  }, [state.inventory, state.salePrice, state.ventureId]);
+  }, [state.inventory, state.salePrice, state.ventureId, state.pendingEventId]);
 
   const changePrice = useCallback((amount: number) => {
     setState((current) => {
       const venture = VENTURES.find((item) => item.id === current.ventureId);
-      if (!venture) return current;
+      if (current.pendingEventId || !venture) return current;
       const nextPrice = Math.max(venture.unitCost + 1, Math.min(venture.salePrice + 20, current.salePrice + amount));
       return { ...current, salePrice: nextPrice };
     });
   }, []);
 
   const saveMoney = useCallback(() => {
-    if (state.cash < 10) return false;
+    if (state.pendingEventId || state.cash < 10) return false;
     setState((current) => {
-      if (current.cash < 10) return current;
+      if (current.pendingEventId || current.cash < 10) return current;
       const getsBadge = current.savings < 10 && !current.badges.includes('smart-saver');
       return {
         ...current,
@@ -284,12 +296,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
       };
     });
     return true;
-  }, [state.cash]);
+  }, [state.cash, state.pendingEventId]);
 
   const withdrawSavings = useCallback(() => {
-    if (state.savings < 10) return false;
+    if (state.pendingEventId || state.savings < 10) return false;
     setState((current) => {
-      if (current.savings < 10) return current;
+      if (current.pendingEventId || current.savings < 10) return current;
       return {
         ...current,
         cash: current.cash + 10,
@@ -298,7 +310,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       };
     });
     return true;
-  }, [state.savings]);
+  }, [state.savings, state.pendingEventId]);
 
   const completeQuest = useCallback(
     (id: string, correct: boolean) => {
@@ -309,7 +321,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const completedQuests = [...current.completedQuests, id];
         const badges = [...current.badges];
         if (completedCount === 1 && !badges.includes('first-quest')) badges.push('first-quest');
-        if (completedQuests.length >= 3 && !badges.includes('decision-maker')) badges.push('decision-maker');
+        if (QUESTS.every((quest) => completedQuests.includes(quest.id)) && !badges.includes('decision-maker')) badges.push('decision-maker');
         return {
           ...current,
           completedQuests,
@@ -324,9 +336,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
   );
 
   const hireHelper = useCallback(() => {
-    if (state.helperHired || state.cash < 35) return false;
+    if (state.pendingEventId || state.helperHired || state.cash < 35) return false;
     setState((current) => {
-      if (current.helperHired || current.cash < 35) return current;
+      if (current.pendingEventId || current.helperHired || current.cash < 35) return current;
       return {
         ...current,
         cash: current.cash - 35,
@@ -340,60 +352,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
       };
     });
     return true;
-  }, [state.cash, state.helperHired]);
+  }, [state.cash, state.helperHired, state.pendingEventId]);
 
   const resolveBusinessEvent = useCallback((choice: number) => {
-    const eventIndex = state.eventCycle % 3;
-    const eventMessages = [
-      [
-        'Smart planning! Your emergency fund covered the cooler. Your drinks are ready to serve.',
-        'You protected your stock instead of rushing. A good founder knows when to pause.',
-        'Your mentor helped fix the cooler. Asking for help is a strong business move.',
-      ],
-      [
-        'Your covered spot is open. Customers can shop without getting soaked.',
-        'Sharing a space saved your supplies and your cash. Teamwork works!',
-        'You protected your stock and used the quiet time to plan your next market day.',
-      ],
-      [
-        'A backup batch is ready! Planning ahead kept your shop moving.',
-        'The maker trade worked. You got supplies without spending all your money.',
-        'You compared your options before buying. Careful choices protect a business.',
-      ],
-    ] as const;
-    const message = eventMessages[eventIndex]?.[choice];
-    if (!message || choice < 0 || choice > 2) return null;
-    const eventCost = eventIndex === 2 && choice === 0
-      ? (VENTURES.find((venture) => venture.id === state.ventureId)?.unitCost ?? 4) * 4
-      : 0;
-    const cost = eventIndex === 0 && choice === 0 ? 12
-      : eventIndex === 0 && choice === 2 ? 5
-      : eventIndex === 1 && choice === 0 ? 8
-      : eventIndex === 2 && choice === 0 ? eventCost
-      : 0;
-    const fromSavings = eventIndex === 0 && choice === 0;
-    if (fromSavings && state.savings < cost) return null;
-    if (!fromSavings && state.cash < cost) return null;
-    const xp = choice === 0 ? 15 : choice === 1 ? 12 : 8;
+    const decision = applyBusinessDecision(state, choice);
+    if (!decision) return null;
     setState((current) => {
-      if (fromSavings && current.savings < cost) return current;
-      if (!fromSavings && current.cash < cost) return current;
-      const next = {
-        ...current,
-        inventory: current.inventory + (eventIndex === 2 && choice === 0 ? 4 : 0),
-        cash: fromSavings ? current.cash : current.cash - cost,
-        savings: fromSavings ? current.savings - cost : current.savings,
-        xp: current.xp + xp,
-        points: current.points + 10,
-        eventCycle: current.eventCycle + 1,
-        ledger: cost > 0
-          ? [makeEntry('Handled a business surprise', -cost), ...current.ledger].slice(0, 8)
+      if (current.pendingEventId !== state.pendingEventId || current.eventCycle !== state.eventCycle) return current;
+      const result = applyBusinessDecision(current, choice);
+      if (!result) return current;
+      return {
+        ...result.state,
+        lastEventMessage: result.message,
+        ledger: result.cost > 0
+          ? [makeEntry('Handled a business surprise', -result.cost), ...current.ledger].slice(0, 8)
           : current.ledger,
       };
-      return next;
     });
-    return message;
-  }, [state.cash, state.eventCycle, state.savings]);
+    return decision.message;
+  }, [state]);
 
   const value = useMemo(
     () => ({

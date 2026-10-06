@@ -2,10 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
 import React, { type ReactNode } from 'react';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { MotionPressable, PageMotion } from './Motion';
 import {
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,6 +26,7 @@ export function Page({ children }: { children: ReactNode }) {
       style={[styles.safe, { backgroundColor: colors.background }]}
     >
       <StatusBar style="dark" />
+      <PageMotion>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
@@ -50,6 +50,7 @@ export function Page({ children }: { children: ReactNode }) {
         </View>
         {children}
       </ScrollView>
+      </PageMotion>
     </SafeAreaView>
   );
 }
@@ -171,10 +172,6 @@ export function AppButton({
   testID?: string;
 }) {
   const colors = useColors();
-  const pressScale = useSharedValue(1);
-  const pressStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pressScale.value }],
-  }));
   const stylesByVariant = {
     primary: {
       backgroundColor: colors.primary,
@@ -198,23 +195,18 @@ export function AppButton({
     },
   }[variant];
   return (
-    <Pressable
+    <MotionPressable
       accessibilityRole="button"
       testID={testID}
       disabled={disabled}
       onPress={onPress}
-      onPressIn={() => { if (!disabled) pressScale.value = withSpring(0.96, { damping: 13, stiffness: 260 }); }}
-      onPressOut={() => { pressScale.value = withSpring(1, { damping: 12, stiffness: 240 }); }}
-      style={({ pressed }) => [
-        styles.buttonPressable,
-        { opacity: disabled ? 0.45 : pressed ? 0.94 : 1 },
-      ]}
+      accessibilityState={{ disabled }}
+      style={[styles.buttonPressable, { opacity: disabled ? 0.45 : 1 }]}
     >
-      <Animated.View
+      <View
         style={[
           styles.button,
           compact && styles.buttonCompact,
-          pressStyle,
           { backgroundColor: stylesByVariant.backgroundColor, borderColor: stylesByVariant.borderColor },
         ]}
       >
@@ -222,8 +214,8 @@ export function AppButton({
           {label}
         </Text>
         {icon ? <Ionicons name={icon} size={18} color={stylesByVariant.color} /> : null}
-      </Animated.View>
-    </Pressable>
+      </View>
+    </MotionPressable>
   );
 }
 

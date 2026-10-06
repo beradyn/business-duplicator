@@ -2,12 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { AppButton, BrandHeader, Page, PageHeading, Panel, RoundIcon, SectionHeading } from '@/components/GameUI';
+import { MotionPressable, Reveal } from '@/components/Motion';
 import { useColors } from '@/hooks/useColors';
 import { useGame } from '@/providers/GameProvider';
-import { BUSINESS_EVENTS, VENTURES, type Venture, type VentureId } from '@/constants/game-content';
+import { VENTURES, type Venture, type VentureId } from '@/constants/game-content';
 
 export default function BusinessScreen() {
   const colors = useColors();
@@ -21,7 +22,6 @@ export default function BusinessScreen() {
     saveMoney,
     withdrawSavings,
     hireHelper,
-    resolveBusinessEvent,
   } = useGame();
   const venture = VENTURES.find((item) => item.id === state.ventureId);
   const feedback = (success: boolean, message: string) => {
@@ -30,9 +30,6 @@ export default function BusinessScreen() {
     return message;
   };
   const [message, setMessage] = React.useState('');
-  const [eventOpen, setEventOpen] = React.useState(false);
-  const [eventMessage, setEventMessage] = React.useState('');
-  const [eventError, setEventError] = React.useState('');
 
   if (!venture) {
     return (
@@ -73,13 +70,13 @@ export default function BusinessScreen() {
 
   const restockCost = venture.unitCost * 4;
   const profitPerItem = state.salePrice - venture.unitCost;
-  const event = BUSINESS_EVENTS[state.eventCycle % BUSINESS_EVENTS.length]!;
   const customerMood = state.salePrice > venture.salePrice + 2
     ? 'That price is a bit high for me. Could you lower it?'
     : state.salePrice < venture.salePrice - 2
       ? 'What a deal! I might tell my friends.'
       : 'That looks great! I could go for one.';
   const makeSale = () => {
+    if (state.pendingEventId) return;
     if (state.salePrice > venture.salePrice + 2) {
       setMessage('A customer passed: “That price is a bit high for me.” Try lowering it to make a sale.');
       void Haptics.selectionAsync();
@@ -171,7 +168,7 @@ export default function BusinessScreen() {
           <View style={styles.priceBlock}>
             <Text style={[styles.priceLabel, { color: colors.mutedForeground }]}>SELL FOR</Text>
             <View style={styles.priceAdjust}>
-              <Pressable
+              <MotionPressable
                 accessibilityRole="button"
                 accessibilityLabel="Lower product price"
                 testID="price-lower"
@@ -179,9 +176,9 @@ export default function BusinessScreen() {
                 style={[styles.adjustButton, { backgroundColor: colors.card }]}
               >
                 <Ionicons name="remove" size={15} color={colors.foreground} />
-              </Pressable>
+              </MotionPressable>
               <Text style={[styles.priceValue, { color: colors.foreground }]}>{state.salePrice}</Text>
-              <Pressable
+              <MotionPressable
                 accessibilityRole="button"
                 accessibilityLabel="Raise product price"
                 testID="price-raise"
@@ -189,7 +186,7 @@ export default function BusinessScreen() {
                 style={[styles.adjustButton, { backgroundColor: colors.card }]}
               >
                 <Ionicons name="add" size={15} color={colors.foreground} />
-              </Pressable>
+              </MotionPressable>
             </View>
           </View>
           <View style={[styles.profitChip, { backgroundColor: colors.mintSoft }]}>
@@ -236,16 +233,16 @@ export default function BusinessScreen() {
           <Ionicons name="chatbubble-ellipses" size={19} color={colors.accentForeground} />
         </View>
         {message ? (
-          <View style={[styles.actionMessage, { backgroundColor: colors.card }]}>
+          <Reveal key={state.sold + message} style={[styles.actionMessage, { backgroundColor: colors.card }]}>
             <Ionicons name={message.includes('passed') || message.includes('sold out') ? 'chatbubble-ellipses' : 'checkmark-circle'} size={18} color={message.includes('passed') || message.includes('sold out') ? colors.primary : colors.mint} />
             <Text style={[styles.actionMessageText, { color: colors.secondaryForeground }]}>{message}</Text>
-          </View>
+          </Reveal>
         ) : null}
         <AppButton
           label={state.inventory > 0 ? 'Serve this customer' : 'Restock for the next customer'}
           icon={state.inventory > 0 ? 'basket-outline' : 'cart-outline'}
           compact
-          disabled={state.inventory <= 0}
+          disabled={Boolean(state.pendingEventId) || state.inventory <= 0}
           testID="sell-product"
           onPress={makeSale}
         />
@@ -258,7 +255,7 @@ export default function BusinessScreen() {
           title="Restock 4"
           detail={`Spend ${restockCost} · cost ${venture.unitCost} each`}
           tone="blue"
-          disabled={state.cash < restockCost}
+          disabled={Boolean(state.pendingEventId) || state.cash < restockCost}
           testID="restock-products"
           onPress={() => setMessage(feedback(restock(), 'Four products added to your shelf.'))}
         />
@@ -267,7 +264,7 @@ export default function BusinessScreen() {
           title={state.helperHired ? 'Helper on shift' : 'Hire a helper'}
           detail={state.helperHired ? 'Earn +2 per sale together' : 'Spend 35 · +2 per sale'}
           tone="mint"
-          disabled={state.helperHired || state.cash < 35}
+          disabled={Boolean(state.pendingEventId) || state.helperHired || state.cash < 35}
           testID="hire-helper"
           onPress={() => setMessage(feedback(hireHelper(), 'A shop helper joined your team! You now earn 2 extra Biz Bucks per sale.'))}
         />
@@ -294,7 +291,7 @@ export default function BusinessScreen() {
             icon="arrow-down"
             variant="secondary"
             compact
-            disabled={state.cash < 10}
+            disabled={Boolean(state.pendingEventId) || state.cash < 10}
             testID="save-money"
             onPress={() => setMessage(feedback(saveMoney(), '10 Biz Bucks tucked away for later.'))}
           />
@@ -303,69 +300,19 @@ export default function BusinessScreen() {
             icon="arrow-up"
             variant="outline"
             compact
-            disabled={state.savings < 10}
+            disabled={Boolean(state.pendingEventId) || state.savings < 10}
             testID="withdraw-savings"
             onPress={() => setMessage(feedback(withdrawSavings(), '10 Biz Bucks moved back to your wallet.'))}
           />
         </View>
       </Panel>
 
-      <Panel tone="orange" style={styles.eventPanel}>
-        <View style={styles.eventHeading}>
-          <RoundIcon name="warning-outline" color={colors.primary} background={colors.card} size={43} />
-          <View style={styles.eventTitleWrap}>
-            <Text style={[styles.eventOverline, { color: colors.primary }]}>FOUNDER DECISION</Text>
-            <Text style={[styles.eventTitle, { color: colors.foreground }]}>{event.title}</Text>
-          </View>
-        </View>
-        <Text style={[styles.eventStory, { color: colors.inkSoft }]}>{event.story}</Text>
-        {eventMessage ? (
-          <View style={[styles.eventFeedback, { backgroundColor: colors.mintSoft }]}>
-            <Ionicons name="checkmark-circle" size={19} color={colors.mint} />
-            <Text style={[styles.eventFeedbackText, { color: colors.secondaryForeground }]}>{eventMessage}</Text>
-          </View>
-        ) : null}
-        {eventError ? <Text style={[styles.eventError, { color: colors.destructive }]}>{eventError}</Text> : null}
-        {eventOpen && !eventMessage ? event.choices.map((choice, index) => {
-          const price = event.id === 'broken-cooler' && index === 0 ? 12
-            : event.id === 'broken-cooler' && index === 2 ? 5
-            : event.id === 'rainy-market' && index === 0 ? 8
-            : event.id === 'supply-shortage' && index === 0 ? 16
-            : 0;
-          const usesFund = event.id === 'broken-cooler' && index === 0;
-          const canAfford = usesFund ? state.savings >= price : state.cash >= price;
-          return (
-            <Pressable
-              key={choice.label}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !canAfford }}
-              disabled={!canAfford}
-              onPress={() => {
-                setEventError('');
-                const result = resolveBusinessEvent(index);
-                if (result) { setEventMessage(result); setEventOpen(false); }
-                else setEventError(usesFund ? 'Your emergency fund needs more savings first. Choose a different plan.' : 'Your wallet needs a few more Biz Bucks for that choice. Choose another plan.');
-              }}
-              style={[styles.choiceCard, { backgroundColor: colors.card, borderColor: colors.border, opacity: canAfford ? 1 : 0.55 }]}
-            >
-              <View style={[styles.choiceNumber, { backgroundColor: colors.goldSoft }]}>
-                <Text style={[styles.choiceNumberText, { color: colors.accentForeground }]}>{index + 1}</Text>
-              </View>
-              <View style={styles.choiceCopy}>
-                <Text style={[styles.choiceTitle, { color: colors.foreground }]}>{choice.label}</Text>
-                <Text style={[styles.choiceDescription, { color: colors.mutedForeground }]}>{choice.detail}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
-            </Pressable>
-          );
-        }) : null}
-        {eventMessage ? (
-          <AppButton label="Next surprise" icon="arrow-forward" compact variant="secondary" onPress={() => { setEventMessage(''); setEventError(''); }} />
-        ) : !eventOpen ? (
-          <AppButton label="Choose what to do" icon="bulb-outline" compact variant="light" onPress={() => setEventOpen(true)} />
-        ) : null}
-        {eventMessage ? <Text style={[styles.eventXp, { color: colors.violet }]}>+10 Biz Points · smart thinking!</Text> : null}
-      </Panel>
+      {state.lastEventMessage ? (
+        <Reveal style={[styles.eventFeedback, { backgroundColor: colors.mintSoft }]}>
+          <Ionicons name="checkmark-circle" size={19} color={colors.mint} />
+          <Text style={[styles.eventFeedbackText, { color: colors.secondaryForeground }]}>{state.lastEventMessage}</Text>
+        </Reveal>
+      ) : null}
 
       <View style={styles.ledgerSection}>
         <SectionHeading title="Money trail" />
@@ -402,14 +349,14 @@ function VentureChoice({ venture, onChoose }: { venture: Venture; onChoose: () =
     mint: { bg: colors.mintSoft, icon: colors.mint },
   }[venture.tone];
   return (
-    <Pressable
+    <MotionPressable
       accessibilityRole="button"
       accessibilityLabel={`Start a ${venture.name}`}
       testID={`choose-${venture.id}`}
       onPress={onChoose}
-      style={({ pressed }) => [
+      style={[
         styles.ventureChoice,
-        { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.83 : 1 },
+        { backgroundColor: colors.card, borderColor: colors.border, opacity: 1 },
       ]}
     >
       <RoundIcon name={venture.icon} color={tone.icon} background={tone.bg} size={48} />
@@ -422,7 +369,7 @@ function VentureChoice({ venture, onChoose }: { venture: Venture; onChoose: () =
         </Text>
       </View>
       <Ionicons name="chevron-forward" size={19} color={colors.mutedForeground} />
-    </Pressable>
+    </MotionPressable>
   );
 }
 
@@ -487,25 +434,25 @@ function ActionCard({
     ? { bg: colors.blueSoft, fg: colors.blue }
     : { bg: colors.mintSoft, fg: colors.mint };
   return (
-    <Pressable
+    <MotionPressable
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       testID={testID}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [
+      style={[
         styles.actionCard,
         {
           backgroundColor: colors.card,
           borderColor: colors.border,
-          opacity: disabled ? 0.45 : pressed ? 0.82 : 1,
+          opacity: disabled ? 0.45 : 1,
         },
       ]}
     >
       <RoundIcon name={icon} color={theme.fg} background={theme.bg} size={40} />
       <Text style={[styles.actionTitle, { color: colors.foreground }]}>{title}</Text>
       <Text style={[styles.actionDetail, { color: colors.mutedForeground }]}>{detail}</Text>
-    </Pressable>
+    </MotionPressable>
   );
 }
 

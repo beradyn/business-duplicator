@@ -15,6 +15,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { GameProvider } from '@/providers/GameProvider';
 import { AuthProvider } from '@/providers/AuthProvider';
+import { BusinessDecision } from '@/components/BusinessDecision';
 import { RewardCelebration } from '@/components/RewardCelebration';
 import { setBaseUrl } from '@workspace/api-client-react';
 
@@ -62,6 +63,7 @@ export default function RootLayout() {
                 <KeyboardProvider>
                   <RootLayoutNav />
                   <RewardCelebration />
+                  <BusinessDecision />
                 </KeyboardProvider>
               </GestureHandlerRootView>
             </GameProvider>

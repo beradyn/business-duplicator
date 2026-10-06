@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import { useMotionPreference } from '@/hooks/useMotionPreference';
 import { useColors } from '@/hooks/useColors';
 import { BADGES } from '@/constants/game-content';
 import { useGame } from '@/providers/GameProvider';
@@ -10,6 +11,7 @@ import { useAuth } from '@/providers/AuthProvider';
 
 export function RewardCelebration() {
   const colors = useColors();
+  const reducedMotion = useMotionPreference();
   const { state, level, hydrated } = useGame();
   const { user } = useAuth();
   const seen = useRef<{ level: number; badges: string[] } | null>(null);
@@ -47,9 +49,10 @@ export function RewardCelebration() {
 
   useEffect(() => {
     if (!reward) return;
+    if (reducedMotion) { opacity.value = 1; scale.value = 1; return; }
     opacity.value = withTiming(1, { duration: 170 });
     scale.value = withSequence(withSpring(1.06, { damping: 9, stiffness: 170 }), withSpring(1, { damping: 11 }));
-  }, [opacity, reward, scale]);
+  }, [opacity, reward, scale, reducedMotion]);
 
   const close = () => {
     opacity.value = withTiming(0, { duration: 130 });
@@ -58,8 +61,8 @@ export function RewardCelebration() {
   };
 
   return (
-    <Modal visible={Boolean(reward && user)} transparent animationType="fade" onRequestClose={close}>
-      <View style={styles.backdrop}>
+    <Modal visible={Boolean(reward && user && !state.pendingEventId)} transparent animationType="fade" onRequestClose={close}>
+      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Close reward" />
         <Animated.View style={[styles.card, { backgroundColor: colors.card }, animatedStyle]}>
           <View style={[styles.sparkle, { backgroundColor: colors.goldSoft }]}>

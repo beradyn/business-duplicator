@@ -1,4 +1,6 @@
 import express from "express";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
@@ -26,7 +28,13 @@ app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 
 const SAFE_TOOLS = new Set(["list-clients", "get-game-info", "get-console-output", "search-instances", "get-descendants-tree", "get-script-content", "script-grep", "semantic-search-scripts", "list-roblox-windows", "get-remote-spy-logs", "execute"]);
-const allowed = available.tools.filter(t => SAFE_TOOLS.has(t.name));
+const captureAirplay = {
+  name: "capture-airplay-screen",
+  description: "Capture a screenshot of the visible AirPlay Video Stream window on the Windows gateway PC. Only use when the user asks to see their mirrored iPhone screen. The mirror window must be visible and unobstructed.",
+  inputSchema: { type: "object" as const, properties: {}, additionalProperties: false }
+};
+const allowed = [...available.tools.filter(t => SAFE_TOOLS.has(t.name)), captureAirplay];
+const execFileAsync = promisify(execFile);
 function authenticated(header: string | undefined) {
   const expected = Buffer.from("Bearer " + token);
   const received = Buffer.from(header ?? "");
@@ -40,6 +48,19 @@ function createMcpServer() {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: allowed }));
   server.setRequestHandler(CallToolRequestSchema, async request => {
     const name = request.params.name;
+    if (name === "capture-airplay-screen") {
+      if (process.platform !== "win32") return { isError: true, content: [{ type: "text" as const, text: "AirPlay capture requires Windows." }] };
+      try {
+        const script = fileURLToPath(new URL("../src/capture-airplay.ps1", import.meta.url));
+        const { stdout } = await execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", script], { timeout: 15000, maxBuffer: 12 * 1024 * 1024, windowsHide: true });
+        const data = stdout.trim();
+        if (!data || !/^[A-Za-z0-9+/=]+$/.test(data)) throw new Error("Invalid screenshot data");
+        return { content: [{ type: "image" as const, data, mimeType: "image/png" }] };
+      } catch (error) {
+        console.error("AirPlay screenshot failed:", error instanceof Error ? error.message : "unknown error");
+        return { isError: true, content: [{ type: "text" as const, text: "Could not capture AirPlay window. Ensure the AirPlay Video Stream window is visible and not minimized." }] };
+      }
+    }
     if (!SAFE_TOOLS.has(name) || !allowed.some(t => t.name === name)) {
       return { isError: true, content: [{ type: "text" as const, text: "Tool not permitted." }] };
     }

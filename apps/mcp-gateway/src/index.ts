@@ -25,7 +25,7 @@ const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 
-const SAFE_TOOLS = new Set(["list-clients", "get-game-info", "get-console-output", "search-instances", "get-descendants-tree", "get-script-content", "script-grep", "semantic-search-scripts", "list-roblox-windows", "get-remote-spy-logs"]);
+const SAFE_TOOLS = new Set(["list-clients", "get-game-info", "get-console-output", "search-instances", "get-descendants-tree", "get-script-content", "script-grep", "semantic-search-scripts", "list-roblox-windows", "get-remote-spy-logs", "execute"]);
 const allowed = available.tools.filter(t => SAFE_TOOLS.has(t.name));
 function authenticated(header: string | undefined) {
   const expected = Buffer.from("Bearer " + token);
@@ -68,7 +68,7 @@ app.all("/mcp", async (req, res) => {
   }
 });
 app.get("/health", (_req, res) => res.json({ ok: true, toolCount: allowed.length }));
-const listener = app.listen(port, host, () => console.log(`Local MCP gateway listening at http://${host}:${port}/mcp; read-only tools: ${allowed.length}`));
+const listener = app.listen(port, host, () => console.log(`Local MCP gateway listening at http://${host}:${port}/mcp; exposed tools: ${allowed.length}`));
 async function shutdown() {
   listener.close();
   await upstream.close().catch(() => {});

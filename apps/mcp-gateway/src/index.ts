@@ -1,13 +1,13 @@
 import express from "express";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { z } from "zod";
 
 const port = Number(process.env.GATEWAY_PORT ?? 18765);
 const host = "127.0.0.1"; // Never expose directly to the internet.
@@ -33,33 +33,24 @@ function authenticated(header: string | undefined) {
   return expected.length === received.length && timingSafeEqual(expected, received);
 }
 function createMcpServer() {
-  const server = new McpServer({ name: "business-duplicator-remote", version: "0.1.0" });
-  for (const tool of allowed) {
-    // Preserve the original JSON schema using the SDK's low-level tool registration.
-    server.server.setRequestHandler as unknown; // The dynamic tools below are registered through registerTool.
-    const properties = (tool.inputSchema?.properties ?? {}) as Record<string, unknown>;
-    const shape: Record<string, z.ZodTypeAny> = {};
-    // This prototype intentionally only supports string-typed fields.
-    // Unsupported schemas must not be advertised with incorrect validation.
-    let supported = true;
-    for (const [key, value] of Object.entries(properties)) {
-      const schema = value as { type?: string };
-      if (schema.type !== "string") { supported = false; break; }
-      shape[key] = (tool.inputSchema.required ?? []).includes(key) ? z.string() : z.string().optional();
+  const server = new Server({ name: "business-duplicator-remote", version: "0.1.0" }, {
+    capabilities: { tools: {} }
+  });
+  // Reuse the actual MCP JSON schemas, including nested/number/boolean inputs.
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: allowed }));
+  server.setRequestHandler(CallToolRequestSchema, async request => {
+    const name = request.params.name;
+    if (!SAFE_TOOLS.has(name) || !allowed.some(t => t.name === name)) {
+      return { isError: true, content: [{ type: "text" as const, text: "Tool not permitted." }] };
     }
-    if (!supported) continue;
-    server.registerTool(tool.name, {
-      description: tool.description ?? "",
-      inputSchema: shape
-    }, async (args) => {
-      try {
-        const result = await upstream.callTool({ name: tool.name, arguments: args });
-        return { content: result.content as Array<{ type: "text"; text: string }>, isError: result.isError === true };
-      } catch (error) {
-        return { content: [{ type: "text" as const, text: String(error) }], isError: true };
-      }
-    });
-  }
+    try {
+      const result = await upstream.callTool({ name, arguments: request.params.arguments ?? {} });
+      return result;
+    } catch (error) {
+      console.error("Upstream tool failed:", name);
+      return { isError: true, content: [{ type: "text" as const, text: "Upstream tool call failed." }] };
+    }
+  });
   return server;
 }
 app.all("/mcp", async (req, res) => {
@@ -67,7 +58,7 @@ app.all("/mcp", async (req, res) => {
   // Stateless transport: one MCP session per request. No public exposure or OAuth yet.
   const server = createMcpServer();
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  res.on("close", () => { void transport.close(); void server.close(); });
+  res.on("finish", () => { void transport.close(); void server.close(); });
   try {
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);

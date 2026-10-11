@@ -1,3 +1,5 @@
 packages:
   - "artifacts/*"
   - "roblox-executor-mcp-main/roblox-executor-mcp-main"
+  - "apps/*"
+  - "packages/*"

@@ -20,7 +20,15 @@ The Roblox client can continue using its local bridge at `localhost:16384`.
 - Verify OAuth metadata, audience validation, protected-resource metadata, and authorization-code + PKCE behavior.
 - Serve the gateway through HTTPS without publicly exposing port 16384.
 - Add rate limiting, request size/time limits, logging hygiene, and integration tests.
-- Review tool schemas; this initial gateway exposes only read-only tools with string-only arguments, and skips other tools.
+- Tool schemas are now forwarded unchanged from the upstream MCP server, including structured arguments. Confirm SDK compatibility with integration tests.
 - Verify the MCP SDK transport behavior against a real ChatGPT connector before deployment.
 
 This prototype does **not** implement start/stop controls or production authentication.
+
+## Connector authentication decision
+
+ChatGPT's custom MCP connector currently offers OAuth, no authentication, or optional OAuth. This gateway's static bearer token is **not** directly configurable in that UI. A production deployment needs a compatible OAuth authorization server and resource-server validation, including PKCE, issuer/audience checks, and discovery metadata. Never use an unauthenticated public endpoint as a workaround. The `tunnel_...` field in ChatGPT is not a generic tunnel URL.
+
+## Implementation notes
+
+The gateway uses the MCP SDK's low-level Server handlers so it forwards upstream JSON tool schemas without lossy conversions. It remains a local development prototype. Do not put a public reverse proxy in front of it until proper OAuth is implemented and tested.

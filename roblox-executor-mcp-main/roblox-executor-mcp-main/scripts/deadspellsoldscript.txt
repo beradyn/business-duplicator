@@ -1,0 +1,215 @@
+--[[
+	WARNING: Heads up! This script has not been verified by ScriptBlox. Use at your own risk!
+]]
+local player = game.Players.LocalPlayer
+local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+gui.Name = "XanoHub"
+gui.ResetOnSpawn = false
+
+-- === LOADING SCREEN ===
+local loadingFrame = Instance.new("Frame", gui)
+loadingFrame.Size = UDim2.new(1, 0, 1, 0)
+loadingFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+
+local loadingLabel = Instance.new("TextLabel", loadingFrame)
+loadingLabel.Size = UDim2.new(0, 300, 0, 100)
+loadingLabel.Position = UDim2.new(0.5, -150, 0.5, -100)
+loadingLabel.BackgroundTransparency = 1
+loadingLabel.Text = "Bypassing..."
+loadingLabel.Font = Enum.Font.GothamBlack
+loadingLabel.TextSize = 60
+loadingLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+local progressBarBackground = Instance.new("Frame", loadingFrame)
+progressBarBackground.Size = UDim2.new(0, 320, 0, 20)
+progressBarBackground.Position = UDim2.new(0.5, -160, 0.5, 20)
+progressBarBackground.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+progressBarBackground.BorderSizePixel = 0
+Instance.new("UICorner", progressBarBackground).CornerRadius = UDim.new(0, 10)
+
+local progressBarFill = Instance.new("Frame", progressBarBackground)
+progressBarFill.Size = UDim2.new(0, 0, 1, 0)
+progressBarFill.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
+progressBarFill.BorderSizePixel = 0
+Instance.new("UICorner", progressBarFill).CornerRadius = UDim.new(0, 10)
+
+local RunService = game:GetService("RunService")
+local pulseTime, elapsed = 2, 0
+local heartbeatConnection = RunService.Heartbeat:Connect(function(dt)
+	elapsed = (elapsed + dt) % pulseTime
+	local alpha = math.abs((elapsed / pulseTime) * 2 - 1)
+	loadingLabel.TextSize = 50 + (30 * alpha)
+end)
+
+local sound = Instance.new("Sound", loadingFrame)
+sound.SoundId = "rbxassetid://1838604416"
+sound.Looped = true
+sound.Volume = 0.5
+sound:Play()
+
+local loadingTime = 10
+local elapsedTime = 0
+local textSwitched = false
+
+local progressConnection = RunService.Heartbeat:Connect(function(dt)
+	elapsedTime += dt
+	progressBarFill.Size = UDim2.new(elapsedTime / loadingTime, 0, 1, 0)
+	if not textSwitched and elapsedTime >= 5 then
+		loadingLabel.Text = "Loading..."
+		textSwitched = true
+	end
+	if elapsedTime >= loadingTime then
+		progressConnection:Disconnect()
+	end
+end)
+
+-- === MAIN GUI ===
+local mainFrame = Instance.new("Frame", gui)
+mainFrame.Size = UDim2.new(0, 250, 0, 120)
+mainFrame.Position = UDim2.new(0.5, -125, 0.5, -60)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+mainFrame.Visible = false
+mainFrame.Active = true
+mainFrame.Draggable = true
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
+
+local xanoBtn = Instance.new("TextButton", mainFrame)
+xanoBtn.Size = UDim2.new(0, 200, 0, 40)
+xanoBtn.Position = UDim2.new(0.5, -100, 0.5, -20)
+xanoBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+xanoBtn.TextColor3 = Color3.new(1, 1, 1)
+xanoBtn.Font = Enum.Font.GothamBold
+xanoBtn.Text = "Xano"
+xanoBtn.TextSize = 24
+Instance.new("UICorner", xanoBtn).CornerRadius = UDim.new(0, 8)
+
+-- === OPTIONS GUI ===
+local optionsFrame = Instance.new("Frame", gui)
+optionsFrame.Size = UDim2.new(0, 260, 0, 480) -- increased for auto win
+optionsFrame.Position = UDim2.new(0.5, -130, 0.5, 80)
+optionsFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+optionsFrame.Visible = false
+optionsFrame.Active = true
+optionsFrame.Draggable = true
+Instance.new("UICorner", optionsFrame).CornerRadius = UDim.new(0, 10)
+
+local function createToggle(text, posY, callback)
+	local button = Instance.new("TextButton", optionsFrame)
+	button.Size = UDim2.new(0, 220, 0, 30)
+	button.Position = UDim2.new(0.5, -110, 0, posY)
+	button.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	button.TextColor3 = Color3.fromRGB(255, 255, 255)
+	button.Font = Enum.Font.Gotham
+	button.TextSize = 18
+	button.Text = text
+	button.MouseButton1Click:Connect(callback)
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
+end
+
+-- === FEATURES ===
+local function enableGodMode()
+	local char = player.Character
+	if char and char:FindFirstChild("Humanoid") then
+		char.Humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+			char.Humanoid.Health = char.Humanoid.MaxHealth
+		end)
+	end
+end
+
+local function enableFly()
+	local hrp = player.Character:WaitForChild("HumanoidRootPart")
+	local bv = Instance.new("BodyVelocity", hrp)
+	bv.Velocity = Vector3.new(0, 0, 0)
+	bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+	local uis = game:GetService("UserInputService")
+	uis.InputBegan:Connect(function(input)
+		local dir = Vector3.new()
+		if input.KeyCode == Enum.KeyCode.W then dir = hrp.CFrame.LookVector end
+		if input.KeyCode == Enum.KeyCode.S then dir = -hrp.CFrame.LookVector end
+		if input.KeyCode == Enum.KeyCode.Space then dir = Vector3.new(0, 1, 0) end
+		bv.Velocity = dir * 50
+	end)
+end
+
+local function autoCollectBurgers()
+	for _, obj in pairs(workspace:GetDescendants()) do
+		if obj:IsA("TouchTransmitter") and obj.Parent and obj.Parent:FindFirstChild("Burger") then
+			firetouchinterest(player.Character.HumanoidRootPart, obj.Parent, 0)
+			wait()
+			firetouchinterest(player.Character.HumanoidRootPart, obj.Parent, 1)
+		end
+	end
+end
+
+local function killAll()
+	for _, p in pairs(game.Players:GetPlayers()) do
+		if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") then
+			p.Character.Humanoid.Health = 0
+		end
+	end
+end
+
+local function teleportToBurgers()
+	for _, obj in pairs(workspace:GetDescendants()) do
+		if obj:IsA("Part") and obj.Name == "Burger" then
+			player.Character:MoveTo(obj.Position)
+			wait(0.2)
+		end
+	end
+end
+
+local function speedBoost()
+	local hum = player.Character:FindFirstChildOfClass("Humanoid")
+	if hum then hum.WalkSpeed = 100 end
+end
+
+local function noClip()
+	RunService.Stepped:Connect(function()
+		for _, part in pairs(player.Character:GetDescendants()) do
+			if part:IsA("BasePart") then part.CanCollide = false end
+		end
+	end)
+end
+
+local function infiniteJump()
+	game:GetService("UserInputService").JumpRequest:Connect(function()
+		player.Character:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
+	end)
+end
+
+-- ✅ NEW: Auto Win
+local function autoWin()
+	for _, obj in pairs(workspace:GetDescendants()) do
+		if obj:IsA("Part") then
+			local name = obj.Name:lower()
+			if name:find("win") or name:find("finish") or name:find("end") then
+				player.Character:MoveTo(obj.Position)
+				break
+			end
+		end
+	end
+end
+
+-- === TOGGLES ===
+createToggle("🛡️ God Mode", 10, enableGodMode)
+createToggle("🕊️ Fly", 50, enableFly)
+createToggle("🍔 Auto Collect Burgers", 90, autoCollectBurgers)
+createToggle("🧨 Kill All", 130, killAll)
+createToggle("🧲 Teleport to Burgers", 170, teleportToBurgers)
+createToggle("⚡ Speed Boost", 210, speedBoost)
+createToggle("🧱 No Clip", 250, noClip)
+createToggle("🧪 Infinite Jump", 290, infiniteJump)
+createToggle("🏆 Auto Win", 330, autoWin)
+
+-- Toggle GUI
+xanoBtn.MouseButton1Click:Connect(function()
+	optionsFrame.Visible = not optionsFrame.Visible
+end)
+
+-- Final loading step
+task.delay(loadingTime, function()
+	heartbeatConnection:Disconnect()
+	sound:Stop()
+	loadingFrame:Destroy()
+	mainFrame.Visible = true
+end)
